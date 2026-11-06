@@ -80,6 +80,7 @@ public class HomeActivity extends Activity implements NotifService.Listener {
 
     private FrameLayout root;
     private ColorDrawable scrim;
+    private String layoutBackup; // the home setup before a theme preview started
     private android.graphics.drawable.Drawable metalSheen;
     private ValueAnimator scrimAnim;
     private LinearLayout home, favColumn, widgetColumn, todayPage, dots, dock;
@@ -804,19 +805,6 @@ public class HomeActivity extends Activity implements NotifService.Listener {
         List<List<String>> pages = Tiles.load(prefs);
         if (pages.get(0).isEmpty() && "minimal".equals(prefs.activeTheme()) && !prefs.bool("tilesSeeded", false))
             pages.set(0, new ArrayList<>(MINIMAL_TILES));
-        if (previewThemes != null) { // full-screen preview: show the theme's signature tiles without saving them
-            String tid = prefs.activeTheme();
-            String[] want = "inkline".equals(tid) ? new String[]{"date|2|4|0|0", "day|2|4|2|0", "week|4|4|0|4", "events|4|6|0|8"}
-                    : "minimal".equals(tid) ? new String[]{"date|2|4|0|0", "day|2|4|2|0", "week|4|4|0|4"} : new String[0];
-            List<String> first = new ArrayList<>(pages.get(0));
-            for (int i = want.length - 1; i >= 0; i--) {
-                String b = Tiles.base(want[i]);
-                boolean has = false;
-                for (String x : first) if (Tiles.base(x).equals(b)) has = true;
-                if (!has) first.add(0, want[i]);
-            }
-            pages.set(0, first);
-        }
         boolean outlined = "outlined".equals(prefs.s(Prefs.TILE_STYLE));
         Tiles.Style ts = new Tiles.Style(prefs.ink(), outlined ? prefs.surface() : tileSurface(), dp(prefs.i(Prefs.WIDGET_RADIUS)),
                 style.face, prefs.depth() > 0, outlined);
@@ -2921,6 +2909,7 @@ public class HomeActivity extends Activity implements NotifService.Listener {
         if (previewThemes == null) {
             previewBackup = Themes.capture(prefs, "backup").toString();
             previewBackupActive = prefs.activeTheme();
+            layoutBackup = Layouts.previewStart(prefs);
         }
         previewThemes = Themes.load(prefs);
         previewIdx = 0;
@@ -2936,15 +2925,17 @@ public class HomeActivity extends Activity implements NotifService.Listener {
 
     private void showPreview() {
         org.json.JSONObject t = previewThemes.get(previewIdx);
+        Layouts.previewShow(prefs, t.optString("id"), layoutBackup); // the theme's whole setup, not just its colours
         prefs.applyLook(t, this);
         markSynced();
         applyStyle();
+        widgets.restore();
         widgets.applyStyle();
         reload();
         previewName.setText(t.optString("name") + "  (" + (previewIdx + 1) + "/" + previewThemes.size() + ")");
         previewName.setTypeface(Ui.typeface(this, Themes.s(t, Prefs.FONT, prefs.darkNow(this)), Typeface.NORMAL));
         previewBar.setVisibility(View.VISIBLE);
-        if (paged()) pager.setPage(0, true); // start on the clock & tiles page, swipe to see apps
+        if (paged()) main.post(() -> pager.setPage(homePage(), false)); // open on the theme's own home page
         widgetScroll.scrollTo(0, 0);
         main.postDelayed(() -> widgetScroll.scrollTo(0, 0), 600);
     }
@@ -2953,6 +2944,7 @@ public class HomeActivity extends Activity implements NotifService.Listener {
         if (previewThemes == null) return;
         try { prefs.applyLook(new org.json.JSONObject(previewBackup), false); } catch (Exception ignored) { }
         prefs.set(Prefs.THEME, previewBackupActive);
+        Layouts.previewCancel(prefs, layoutBackup);
         endPreview();
         Ui.toast(this, "Kept your previous look");
     }
@@ -2960,6 +2952,7 @@ public class HomeActivity extends Activity implements NotifService.Listener {
     private void applyPreview() {
         if (previewThemes == null) return;
         String name = previewThemes.get(previewIdx).optString("name");
+        Layouts.previewApply(prefs, previewThemes.get(previewIdx).optString("id"), layoutBackup);
         endPreview();
         Ui.toast(this, name + " applied");
     }
@@ -2969,6 +2962,7 @@ public class HomeActivity extends Activity implements NotifService.Listener {
         previewBar.setVisibility(View.GONE);
         markSynced();
         applyStyle();
+        widgets.restore();
         widgets.applyStyle();
         reload();
     }

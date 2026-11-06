@@ -65,8 +65,19 @@ final class Themes {
             save(p, out);
         }
         if (find(out, "vividglass") == null && !p.bool("vividAdded", false)) {
-            out.add(Math.min(2, out.size()), vividGlass());
+            out.add(Math.min(2, out.size()), redesigned("vividglass"));
             p.set("vividAdded", true);
+            save(p, out);
+        }
+        if (!p.bool("themesV2", false)) { // every built-in theme redesigned as a whole setup; Minimal and your own themes stay as they are
+            for (int i = 0; i < out.size(); i++) {
+                String id = out.get(i).optString("id");
+                JSONObject n = redesigned(id);
+                if (n == null || id.equals(p.activeTheme())) continue;
+                out.set(i, n);
+                Layouts.forget(p, id);
+            }
+            p.set("themesV2", true);
             save(p, out);
         }
         if (find(out, "minimal") == null && !p.bool("minimalAdded", false)) {
@@ -210,28 +221,78 @@ final class Themes {
         return t;
     }
 
+    /** Built-in themes redesigned as whole home setups (look here, layout in Layouts). Minimal is never touched. */
+    static JSONObject redesigned(String id) {
+        switch (id) {
+            case "silver": return silver();
+            case "vividglass": { // no clock, date + day cards, bright icon grid on deep blue glass
+                JSONObject t = silver();
+                try {
+                    t.put("id", "vividglass"); t.put("name", "Vivid Glass");
+                    t.put(Prefs.ICON_STYLE, IconStyler.VIVID); t.put(Prefs.ACCENT, 0xFF1A73F0);
+                    t.put(Prefs.CLOCK_SHOW, "off"); t.put(Prefs.SEARCH_SHOW, "on"); t.put(Prefs.SEARCH_POS, "bottom");
+                    t.put(Prefs.SEARCH_SHAPE, "pill"); t.put(Prefs.BG_COLOR, 0xFF9FB3CC); t.put(Prefs.ICON, 54);
+                    t.put(Prefs.GRID_LABEL_SIZE, 11);
+                    JSONObject d = t.getJSONObject("dark"); d.put(Prefs.BG_COLOR, 0xFF1B2A44); d.put(Prefs.SURFACE, 0xFF22324E);
+                } catch (Exception ignored) { }
+                return t;
+            }
+            case "inkline": return inkline();
+            case "graphite": return theme("graphite", "Graphite", Prefs.ACCENT, 0xFF8FD3C3, Prefs.DIM, 30, Prefs.DEPTH, 1,
+                    Prefs.FONT, "res:inter", Prefs.ICON_STYLE, IconStyler.SQUIRCLE, Prefs.ICON, 50,
+                    Prefs.CLOCK_SHOW, "on", Prefs.CLOCK_ALIGN, "start", Prefs.CLOCK_FONT, "sans-serif-light", Prefs.CLOCK_SIZE, 72,
+                    Prefs.DATE_STYLE, "long", Prefs.SEARCH_SHOW, "on", Prefs.SEARCH_POS, "top", Prefs.SEARCH_SHAPE, "pill",
+                    Prefs.DOCK_BG, "on", Prefs.DOCK_ICON, 56, Prefs.WIDGET_BG, "glass", Prefs.WIDGET_RADIUS, 24, Prefs.GRID_LABELS, "on");
+            case "glass": return theme("glass", "Soft Glass", Prefs.ACCENT, 0xFF9DB4FF, Prefs.DIM, 25, Prefs.DEPTH, 3,
+                    Prefs.FONT, "res:jakarta", Prefs.ICON_STYLE, IconStyler.SQUIRCLE, Prefs.ICON, 56,
+                    Prefs.CLOCK_SHOW, "on", Prefs.CLOCK_ALIGN, "center", Prefs.CLOCK_FONT, "sans-serif-thin", Prefs.CLOCK_SIZE, 96,
+                    Prefs.DATE_STYLE, "short", Prefs.SEARCH_SHOW, "on", Prefs.SEARCH_POS, "bottom", Prefs.SEARCH_SHAPE, "pill",
+                    Prefs.DOCK_BG, "on", Prefs.DOCK_ICON, 58, Prefs.WIDGET_BG, "glass", Prefs.WIDGET_RADIUS, 32, Prefs.GRID_LABELS, "off");
+            case "porcelain": {
+                JSONObject t = theme("porcelain", "Porcelain", Prefs.ACCENT, 0xFF3A6EA5, Prefs.DIM, 0, Prefs.DEPTH, 2,
+                        Prefs.FONT, "res:dm_sans", Prefs.TEXT_COLOR, "black", Prefs.ICON_STYLE, IconStyler.SQUIRCLE,
+                        Prefs.BG, "solid", Prefs.BG_COLOR, 0xFFF4F1EA, Prefs.SURFACE, 0xFFFFFFFF,
+                        Prefs.CLOCK_SHOW, "on", Prefs.CLOCK_ALIGN, "start", Prefs.CLOCK_FONT, "res:dm_serif", Prefs.CLOCK_SIZE, 56,
+                        Prefs.DATE_STYLE, "long", Prefs.SEARCH_SHOW, "on", Prefs.SEARCH_POS, "top", Prefs.SEARCH_SHAPE, "rounded",
+                        Prefs.DOCK_BG, "off", Prefs.DOCK_ICON, 52, Prefs.WIDGET_BG, "surface", Prefs.WIDGET_RADIUS, 28);
+                try {
+                    JSONObject d = new JSONObject();
+                    d.put(Prefs.TEXT_COLOR, "white"); d.put(Prefs.BG_COLOR, 0xFF15171A); d.put(Prefs.SURFACE, 0xFF22252A);
+                    t.put("dark", d);
+                } catch (Exception ignored) { }
+                return t;
+            }
+            case "monolith": return theme("monolith", "Monolith", Prefs.ACCENT, 0xFFFFFFFF, Prefs.DIM, 45, Prefs.DEPTH, 1,
+                    Prefs.FONT, "res:inter", Prefs.ICON_STYLE, IconStyler.MONO, Prefs.ICON, 46,
+                    Prefs.CLOCK_SHOW, "on", Prefs.CLOCK_ALIGN, "start", Prefs.CLOCK_FONT, "bold", Prefs.CLOCK_SIZE, 132,
+                    Prefs.DATE_STYLE, "numeric", Prefs.SEARCH_SHOW, "off", Prefs.DOCK_BG, "off", Prefs.DOCK_ICON, 50,
+                    Prefs.WIDGET_BG, "none", Prefs.GRID_LABELS, "off");
+            case "apricot": return theme("apricot", "Apricot Tiles", Prefs.ACCENT, 0xFFF2B880, Prefs.DIM, 25, Prefs.DEPTH, 2,
+                    Prefs.FONT, "res:outfit", Prefs.ICON_STYLE, IconStyler.TILE, Prefs.ICON_COLOR, "accent", Prefs.ICON, 54,
+                    Prefs.CLOCK_SHOW, "off", Prefs.SEARCH_SHOW, "on", Prefs.SEARCH_POS, "bottom", Prefs.SEARCH_SHAPE, "rounded",
+                    Prefs.DOCK_BG, "on", Prefs.DOCK_ICON, 56, Prefs.WIDGET_BG, "glass", Prefs.WIDGET_RADIUS, 26, Prefs.GRID_LABELS, "on");
+            case "editorial": return theme("editorial", "Editorial", Prefs.ACCENT, 0xFFD7A6FF, Prefs.DIM, 35, Prefs.DEPTH, 1,
+                    Prefs.FONT, "res:playfair", Prefs.ICON_STYLE, IconStyler.LETTER, Prefs.ICON, 48,
+                    Prefs.CLOCK_SHOW, "on", Prefs.CLOCK_ALIGN, "center", Prefs.CLOCK_FONT, "res:playfair", Prefs.CLOCK_SIZE, 100,
+                    Prefs.DATE_STYLE, "short", Prefs.SEARCH_SHOW, "on", Prefs.SEARCH_POS, "top", Prefs.SEARCH_SHAPE, "text",
+                    Prefs.DOCK_BG, "off", Prefs.DOCK_ICON, 52, Prefs.WIDGET_BG, "none", Prefs.WIDGET_RADIUS, 6);
+            case "terminal": return theme("terminal", "Terminal", Prefs.ACCENT, 0xFFC6E07A, Prefs.DIM, 65, Prefs.DEPTH, 0,
+                    Prefs.FONT, "res:space_mono", Prefs.ICON_STYLE, IconStyler.MONO, Prefs.ICON_COLOR, "accent",
+                    Prefs.CLOCK_SHOW, "on", Prefs.CLOCK_ALIGN, "start", Prefs.CLOCK_FONT, "monospace", Prefs.CLOCK_SIZE, 58,
+                    Prefs.CLOCK_SECONDS, "on", Prefs.CLOCK_FORMAT, "24", Prefs.DATE_STYLE, "numeric",
+                    Prefs.SEARCH_SHOW, "on", Prefs.SEARCH_POS, "top", Prefs.SEARCH_SHAPE, "square",
+                    Prefs.DOCK_BG, "off", Prefs.DOCK_ICON, 48, Prefs.WIDGET_BG, "dark", Prefs.WIDGET_RADIUS, 4);
+            default: return null;
+        }
+    }
+
     static List<JSONObject> builtIns() {
         List<JSONObject> l = new ArrayList<>();
-        l.add(silver());
-        l.add(vividGlass());
-        l.add(theme("graphite", "Graphite", Prefs.ACCENT, 0xFF8FD3C3, Prefs.DIM, 20, Prefs.DEPTH, 1));
+        l.add(redesigned("silver"));
+        l.add(redesigned("vividglass"));
+        l.add(redesigned("graphite"));
         l.add(minimal());
-        l.add(inkline());
-        l.add(theme("glass", "Soft Glass", Prefs.ACCENT, 0xFF9DB4FF, Prefs.DIM, 25, Prefs.DEPTH, 3,
-                Prefs.FONT, "res:jakarta", Prefs.ICON_STYLE, IconStyler.SQUIRCLE, Prefs.CLOCK_ALIGN, "center",
-                Prefs.CLOCK_FONT, "sans-serif-thin", Prefs.CLOCK_SIZE, 88, Prefs.WIDGET_BG, "glass"));
-        l.add(theme("porcelain", "Porcelain", Prefs.ACCENT, 0xFF3A6EA5, Prefs.DIM, 0, Prefs.DEPTH, 2,
-                Prefs.FONT, "res:dm_sans", Prefs.TEXT_COLOR, "black", Prefs.ICON_STYLE, IconStyler.SQUIRCLE));
-        l.add(theme("monolith", "Monolith", Prefs.ACCENT, 0xFFFFFFFF, Prefs.DIM, 40, Prefs.DEPTH, 1,
-                Prefs.FONT, "res:inter", Prefs.ICON_STYLE, IconStyler.MONO, Prefs.CLOCK_FONT, "bold"));
-        l.add(theme("apricot", "Apricot Tiles", Prefs.ACCENT, 0xFFF2B880, Prefs.DIM, 25, Prefs.DEPTH, 2,
-                Prefs.FONT, "res:outfit", Prefs.ICON_STYLE, IconStyler.TILE, Prefs.ICON_COLOR, "accent"));
-        l.add(theme("editorial", "Editorial", Prefs.ACCENT, 0xFFD7A6FF, Prefs.DIM, 35, Prefs.DEPTH, 1,
-                Prefs.FONT, "res:playfair", Prefs.ICON_STYLE, IconStyler.LETTER, Prefs.CLOCK_ALIGN, "center",
-                Prefs.DATE_STYLE, "short"));
-        l.add(theme("terminal", "Terminal", Prefs.ACCENT, 0xFFC6E07A, Prefs.DIM, 60, Prefs.DEPTH, 0,
-                Prefs.FONT, "res:space_mono", Prefs.ICON_STYLE, IconStyler.MONO, Prefs.ICON_COLOR, "accent",
-                Prefs.CLOCK_SECONDS, "on", Prefs.CLOCK_FORMAT, "24", Prefs.DATE_STYLE, "numeric"));
+        for (String id : new String[]{"inkline", "glass", "porcelain", "monolith", "apricot", "editorial", "terminal"}) l.add(redesigned(id));
         return l;
     }
 }
