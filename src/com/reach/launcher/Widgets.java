@@ -42,7 +42,52 @@ final class Widgets {
         private final int slop;
         private float downX, downY;
         private boolean fired;
-        private final Runnable longPress = () -> { fired = true; performLongClick(); };
+        private final Runnable longPress = () -> {
+            if (!fingerDown || armed != this || !isShown()) return; // finger lifted or moved while a parent had the gesture
+            fired = true;
+            performLongClick();
+        };
+
+        /** The widget whose hold timer is running, and where the finger went down (screen coords). */
+        private static HostView armed;
+        private static boolean fingerDown;
+        private static float rawDownX, rawDownY;
+
+        /**
+         * Fed every touch from the activity. When a stack or page takes over a swipe, the widget never
+         * sees the rest of the gesture, so without this its hold timer would fire after the swipe.
+         */
+        static void track(MotionEvent e, float moveSlop) {
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    fingerDown = true;
+                    rawDownX = e.getRawX();
+                    rawDownY = e.getRawY();
+                    break;
+                case MotionEvent.ACTION_MOVE:
+                    if (Math.hypot(e.getRawX() - rawDownX, e.getRawY() - rawDownY) > moveSlop) disarm();
+                    break;
+                case MotionEvent.ACTION_POINTER_DOWN:
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    fingerDown = false;
+                    disarm();
+                    break;
+            }
+        }
+
+        static void disarm() {
+            HostView h = armed;
+            armed = null;
+            if (h != null) h.removeCallbacks(h.longPress);
+        }
+
+        @Override
+        public void cancelLongPress() {
+            super.cancelLongPress();
+            removeCallbacks(longPress);
+            if (armed == this) armed = null;
+        }
 
         HostView(Context c) {
             super(c);
@@ -58,6 +103,8 @@ final class Widgets {
                     fired = false;
                     downX = e.getX();
                     downY = e.getY();
+                    disarm();
+                    armed = this;
                     postDelayed(longPress, Math.max(ViewConfiguration.getLongPressTimeout(), Ui.holdMs));
                     break;
                 case MotionEvent.ACTION_MOVE:
@@ -204,6 +251,7 @@ final class Widgets {
                     } else if (Math.abs(dy) > slop) {
                         decided = true;
                         dragging = true;
+                        HostView.disarm();
                     }
                     break;
                 case MotionEvent.ACTION_UP:
@@ -224,7 +272,7 @@ final class Widgets {
                     if (items.size() > 1) getParent().requestDisallowInterceptTouchEvent(true);
                     return true;
                 case MotionEvent.ACTION_MOVE:
-                    if (!dragging && items.size() > 1 && Math.abs(e.getY() - downY) > slop) dragging = true;
+                    if (!dragging && items.size() > 1 && Math.abs(e.getY() - downY) > slop) { dragging = true; HostView.disarm(); }
                     if (dragging && cur != null) { // the card follows the finger
                         float dy = e.getY() - downY;
                         cur.setTranslationY(dy * 0.6f);

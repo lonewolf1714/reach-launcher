@@ -3325,6 +3325,7 @@ public class HomeActivity extends Activity implements NotifService.Listener {
         lastRawY = ev.getRawY();
         int am0 = ev.getActionMasked();
         trackHold(ev);
+        Widgets.HostView.track(ev, dp(10));
         if (am0 == MotionEvent.ACTION_UP || am0 == MotionEvent.ACTION_CANCEL) main.post(pager::fingerUp);
         if (iconDragging) {
             cancelChildrenOnce(ev);
