@@ -608,8 +608,16 @@ final class Widgets {
     void showPicker(int stackOnto) {
         PackageManager pm = a.getPackageManager();
         List<AppWidgetProviderInfo> all = new ArrayList<>();
-        for (UserHandle u : la.getProfiles()) {
-            try { all.addAll(awm.getInstalledProvidersForProfile(u)); } catch (Exception ignored) { }
+        // main profile first; a copy of the same widget from Dual Apps / another profile is skipped
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        UserHandle me = android.os.Process.myUserHandle();
+        List<UserHandle> profiles = new ArrayList<>(la.getProfiles());
+        profiles.remove(me);
+        profiles.add(0, me);
+        for (UserHandle u : profiles) {
+            List<AppWidgetProviderInfo> l;
+            try { l = awm.getInstalledProvidersForProfile(u); } catch (Exception e) { continue; }
+            for (AppWidgetProviderInfo i : l) if (seen.add(i.provider.flattenToString())) all.add(i);
         }
         Map<String, String> appNames = new HashMap<>();
         for (AppWidgetProviderInfo i : all) {
