@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Reach</string>
+    <string name="settings_name">Reach settings</string>
+    <string name="notif_service">Reach notification previews</string>
+</resources>

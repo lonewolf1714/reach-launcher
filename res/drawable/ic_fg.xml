@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original mark: a thumb-sweep arc reaching a dot, for "reach". -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#FF8FD3C3" android:strokeWidth="7" android:strokeLineCap="round"
+        android:fillColor="#00000000" android:pathData="M36,72 A30,30 0 0 1 66,42" />
+    <path android:strokeColor="#FFEFF6F3" android:strokeWidth="5" android:strokeLineCap="round"
+        android:fillColor="#00000000" android:pathData="M36,78 L72,78" />
+    <path android:fillColor="#FFF2B880" android:pathData="M72,38m-7,0a7,7 0 1,0 14,0a7,7 0 1,0 -14,0" />
+</vector>

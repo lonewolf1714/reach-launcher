@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="SettingsTheme" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="android:colorAccent">#FF1F8A76</item>
+    </style>
+</resources>

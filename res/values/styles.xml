@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="HomeTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:colorAccent">#FF8FD3C3</item>
+    </style>
+    <style name="SettingsTheme" parent="@android:style/Theme.Material.Light">
+        <item name="android:colorAccent">#FF1F8A76</item>
+        <item name="android:colorPrimary">#FF14302C</item>
+    </style>
+    <!-- Settings: a translucent window; SettingsActivity adds the background blur in code (Android 12+). -->
+    <style name="GlassTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:colorAccent">#FFFFFFFF</item>
+        <item name="android:textColorHighlight">#668FD3C3</item>
+    </style>
+    <style name="Translucent" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+</resources>

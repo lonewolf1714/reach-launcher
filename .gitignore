@@ -1,0 +1,10 @@
+# build outputs
+build/
+*.apk
+*.idsig
+# signing key: never publish
+*.keystore
+*.jks
+# local copy of Widget Studio used by older Reach builds
+.widgetstudio_snapshot/
+__pycache__/

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Keep the action bar from covering the first settings rows under Android 15's forced edge-to-edge. -->
+    <style name="SettingsTheme" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="android:colorAccent">#FF1F8A76</item>
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
+</resources>
