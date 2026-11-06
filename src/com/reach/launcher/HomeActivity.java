@@ -1331,6 +1331,17 @@ public class HomeActivity extends Activity implements NotifService.Listener {
     }
 
     private int[][] livePos;   // grid positions while dragging/resizing (others pushed out of the way)
+    private int rzLimit = Integer.MAX_VALUE; // rows a drag/resize may use on this page
+
+    /** How many grid rows fit in the visible page below where the tiles start. */
+    private int pageRows(LinearLayout box, int pitch) {
+        ScrollView sv = scrollerOf(box);
+        if (sv == null || sv.getHeight() == 0 || pitch <= 0) return Integer.MAX_VALUE;
+        int top = box.getPaddingTop();
+        for (View v = box; v != null && v != sv; v = v.getParent() instanceof View ? (View) v.getParent() : null) top += v.getTop();
+        int avail = sv.getHeight() - top - dp(8);
+        return Math.max(1, (avail + Tiles.gap(this)) / pitch);
+    }
     private int tgtC = -1, tgtR = -1;
 
     private View autoScrollView;
@@ -1386,7 +1397,13 @@ public class HomeActivity extends Activity implements NotifService.Listener {
         int width = box.getWidth() > 0 ? box.getWidth() : lastTileWidth;
         int unit = Tiles.unit(this, width), pitch = Tiles.pitch(this, width), colW = Tiles.colWidth(this, width), gap = Tiles.gap(this);
         List<View> views = tileViews.get(rzPage);
-        if (livePos == null) livePos = Tiles.arrange(l, -1, 0, 0);
+        if (livePos == null) {
+            livePos = Tiles.arrange(l, -1, 0, 0);
+            int bottom = 0;
+            for (int i = 0; i < l.size() && i < livePos.length; i++) bottom = Math.max(bottom, livePos[i][1] + Tiles.h(l.get(i)));
+            rzLimit = Math.max(pageRows(box, pitch), bottom);
+        }
+        final int maxRows = rzLimit;
         float x = ev.getRawX(), y = ev.getRawY();
         switch (ev.getActionMasked()) {
             case MotionEvent.ACTION_MOVE:
@@ -1400,6 +1417,7 @@ public class HomeActivity extends Activity implements NotifService.Listener {
                     if (vert(rzMode))
                         h = Math.max(1, Math.min(Tiles.MAX_H, Math.round((Tiles.h(spec) * pitch + (bottomSide(rzMode) ? dy : -dy)) / pitch)));
                     if (w != rzSpan || h != rzH) {
+                        int oldW = rzSpan, oldH = rzH;
                         rzSpan = w;
                         rzH = h;
                         List<String> preview = new ArrayList<>(l);
@@ -1410,13 +1428,19 @@ public class HomeActivity extends Activity implements NotifService.Listener {
                         col = Math.max(0, Math.min(Tiles.G - w, col));
                         row = Math.max(0, row);
                         preview.set(rzSlot, Tiles.placed(Tiles.sized(spec, w, h), col, row));
-                        livePos = Tiles.arrange(preview, rzSlot, col, row);
-                        FrameLayout canvas = Tiles.canvas(this, box);
-                        android.transition.ChangeBounds cb = new android.transition.ChangeBounds();
-                        cb.setDuration(160);
-                        android.transition.TransitionManager.beginDelayedTransition(canvas, cb);
-                        Tiles.layout(this, box, preview, views, width, livePos);
-                        v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                        int[][] np = Tiles.arrange(preview, rzSlot, col, row, maxRows);
+                        if (np == null || row + h > maxRows) { // would push something below the screen: stay as is
+                            rzSpan = oldW;
+                            rzH = oldH;
+                        } else {
+                            livePos = np;
+                            FrameLayout canvas = Tiles.canvas(this, box);
+                            android.transition.ChangeBounds cb = new android.transition.ChangeBounds();
+                            cb.setDuration(160);
+                            android.transition.TransitionManager.beginDelayedTransition(canvas, cb);
+                            Tiles.layout(this, box, preview, views, width, livePos);
+                            v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                        }
                     }
                     sizeBadge.setText(rzSpan + " × " + rzH);
                     sizeBadge.setVisibility(View.VISIBLE);
@@ -1438,7 +1462,6 @@ public class HomeActivity extends Activity implements NotifService.Listener {
                         tgtR = livePos[rzSlot][1];
                     }
                     edgeHold(x);
-                    startAutoScroll(v);
                     if (pager.current() == rzPage) {
                         FrameLayout canvas = Tiles.canvas(this, box);
                         int[] cl = new int[2];
@@ -1447,14 +1470,15 @@ public class HomeActivity extends Activity implements NotifService.Listener {
                         float top = y - grabY - v.getHeight() / 2f - cl[1];
                         int w = Tiles.w(spec);
                         int c = Math.max(0, Math.min(Tiles.G - w, Math.round(left / (float) (colW + gap))));
-                        int r = Math.max(0, Math.round(top / (float) pitch));
+                        int r = Math.max(0, Math.min(Math.round(top / (float) pitch), maxRows - Tiles.h(spec)));
                         // an app heading for another app's spot: that app stays put and lights up (drop = folder)
                         AppCell over = tileApp(spec) != null ? appInSlot(l, views, rzSlot, c, r) : null;
                         setMergeTarget(over);
-                        if (over == null && (c != tgtC || r != tgtR)) { // others glide aside, or back to their own spots
+                        int[][] np = over == null && (c != tgtC || r != tgtR) ? Tiles.arrange(l, rzSlot, c, r, maxRows) : null;
+                        if (np != null) { // others glide aside, or back to their own spots (never below the screen)
                             tgtC = c;
                             tgtR = r;
-                            livePos = Tiles.arrange(l, rzSlot, c, r);
+                            livePos = np;
                             android.transition.ChangeBounds cb = new android.transition.ChangeBounds();
                             cb.setDuration(180);
                             cb.excludeTarget(v, true);
@@ -3404,6 +3428,10 @@ public class HomeActivity extends Activity implements NotifService.Listener {
         int accent = prefs.accent();
         Typeface face = Ui.typeface(this, prefs.font(), Typeface.NORMAL);
         int ink = prefs.ink();
+        if (!prefs.bool("tileStylesReset1", false)) { // one-time: drop test styles left by the first build of the style editor
+            prefs.setQuiet("tilestyles", "{}");
+            prefs.set("tileStylesReset1", true);
+        }
         Ui.depth = prefs.depth();
         Ui.holdMs = Ui.holdMs(prefs);
         setLightBars(!Ui.isLight(ink));

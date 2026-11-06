@@ -192,12 +192,74 @@ final class Tiles {
      * next free spot. Items without a saved spot fill the first free spots from the top.
      */
     static int[][] arrange(List<String> specs, int fixed, int fc, int fr) {
+        return arrange(specs, fixed, fc, fr, Integer.MAX_VALUE);
+    }
+
+    /**
+     * As above, but nothing may reach below maxRows. When the others can't keep their spots, they are
+     * repacked into the free space (top to bottom, in their current order), and the moved item may settle
+     * a row or two away from the finger. Returns null only when nothing fits at all.
+     */
+    static int[][] arrange(List<String> specs, int fixed, int fc, int fr, int maxRows) {
+        int[][] keep = arrangeStrict(specs, fixed, fc, fr, maxRows);
+        if (keep != null || maxRows == Integer.MAX_VALUE) return keep;
+        if (fixed < 0 || fixed >= specs.size()) return compact(specs, -1, 0, 0, maxRows);
+        int h = h(specs.get(fixed)), top = Math.max(0, Math.min(fr, maxRows - h));
+        for (int d = 0; d <= maxRows; d++) {
+            for (int rr : new int[]{top - d, top + d}) {
+                if (rr < 0 || rr + h > maxRows || (d == 0 && rr != top)) continue;
+                int[][] out = compact(specs, fixed, fc, rr, maxRows);
+                if (out != null) return out;
+            }
+        }
+        return null;
+    }
+
+    /** Fixed item at (fc, fr); every other item takes the first free spot from the top, in its current order. */
+    static int[][] compact(List<String> specs, int fixed, int fc, int fr, int maxRows) {
+        int n = specs.size();
+        int[][] out = new int[n][];
+        List<boolean[]> occ = new ArrayList<>();
+        if (fixed >= 0) {
+            String sp = specs.get(fixed);
+            int w = w(sp), c = Math.max(0, Math.min(G - w, fc));
+            if (fr + h(sp) > maxRows) return null;
+            out[fixed] = new int[]{c, fr};
+            mark(occ, c, fr, w, h(sp));
+        }
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < n; i++) if (i != fixed) order.add(i);
+        order.sort((a, b) -> {
+            int[] pa = place(specs.get(a)), pb = place(specs.get(b));
+            int ra = pa == null ? 0 : pa[1], rb = pb == null ? 0 : pb[1];
+            if (ra != rb) return Integer.compare(ra, rb);
+            return Integer.compare(pa == null ? 0 : pa[0], pb == null ? 0 : pb[0]);
+        });
+        for (int i : order) {
+            String sp = specs.get(i);
+            int w = w(sp), h = h(sp);
+            int[] pref = place(sp);
+            int prefCol = pref == null ? 0 : Math.max(0, Math.min(G - w, pref[0]));
+            boolean done = false;
+            for (int r = 0; r + h <= maxRows && !done; r++) {
+                int[] cols = new int[G - w + 1];
+                cols[0] = prefCol;
+                for (int k = 0, j = 1; k <= G - w; k++) if (k != prefCol) cols[j++] = k;
+                for (int c : cols) if (free(occ, c, r, w, h)) { out[i] = new int[]{c, r}; mark(occ, c, r, w, h); done = true; break; }
+            }
+            if (!done) return null;
+        }
+        return out;
+    }
+
+    private static int[][] arrangeStrict(List<String> specs, int fixed, int fc, int fr, int maxRows) {
         int n = specs.size();
         int[][] out = new int[n][];
         List<boolean[]> occ = new ArrayList<>();
         if (fixed >= 0 && fixed < n) {
             String sp = specs.get(fixed);
             int w = w(sp), c = Math.max(0, Math.min(G - w, fc)), r = Math.max(0, fr);
+            if (maxRows != Integer.MAX_VALUE) r = Math.max(0, Math.min(r, maxRows - h(sp)));
             out[fixed] = new int[]{c, r};
             mark(occ, c, r, w, h(sp));
         }
@@ -213,6 +275,10 @@ final class Tiles {
             } else {
                 found:
                 for (int r = startRow; ; r++) {
+                    if (maxRows != Integer.MAX_VALUE && r + h > maxRows) {
+                        if (r == startRow && startRow > 0) { r = -1; startRow = 0; continue; } // look higher up too
+                        return null; // no room left on the page
+                    }
                     int[] cols = new int[G - w + 1];
                     cols[0] = prefCol; // the preferred column first, then left to right
                     for (int k = 0, j = 1; k <= G - w; k++) if (k != prefCol) cols[j++] = k;
