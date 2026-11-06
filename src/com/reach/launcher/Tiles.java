@@ -105,6 +105,8 @@ final class Tiles {
         void safeStart(Intent i);
         /** The app's home-screen icon with its label (same look as the app pages), or null for the card look. */
         default View appIcon(Entry e) { return null; }
+        /** This tile's own style overrides (card, colors, font, size...), or null to follow the theme. */
+        default org.json.JSONObject tileStyle(String key) { return null; }
     }
 
     // ---- size: spec "type|w|h"; w = 1 (half) or 2 (full width); h = height in half-cell units (1..4) ----
@@ -298,6 +300,31 @@ final class Tiles {
         final int ink, surface, radius;
         final Typeface face;
         final boolean depth, outlined;
+        // per-tile extras (Widget Studio style editor)
+        float scale = 1f;
+        String bg = "theme";   // theme, glass, solid, none
+        int opacity = 100;
+        boolean gloss, border;
+
+        /** A copy with this tile's own overrides applied. */
+        Style with(Context c, org.json.JSONObject o) {
+            if (o == null || o.length() == 0) return this;
+            int ink2 = o.optInt("ink", 0) != 0 ? o.optInt("ink") : ink;
+            int surf2 = o.optInt("bgc", 0) != 0 ? o.optInt("bgc") : surface;
+            int rad2 = o.has("radius") ? Ui.dp(c, o.optInt("radius")) : radius;
+            String f = o.optString("font", "");
+            Typeface face2 = f.isEmpty() ? face : Ui.typeface(c, f, Typeface.NORMAL);
+            String d = o.optString("depth", "theme");
+            boolean depth2 = "on".equals(d) || (!"off".equals(d) && depth);
+            Style s = new Style(ink2, surf2, rad2, face2, depth2, outlined);
+            s.scale = o.optInt("scale", 100) / 100f;
+            s.bg = o.optString("bg", "theme");
+            if (o.optInt("bgc", 0) != 0 && "theme".equals(s.bg)) s.bg = "solid";
+            s.opacity = o.optInt("opacity", 100);
+            s.gloss = o.optBoolean("gloss", false);
+            s.border = o.optBoolean("border", false);
+            return s;
+        }
 
         Style(int ink, int surface, int radius, Typeface face, boolean depth) { this(ink, surface, radius, face, depth, false); }
 
@@ -313,14 +340,31 @@ final class Tiles {
 
     private static FrameLayout card(Context c, Style s) {
         FrameLayout f = new FrameLayout(c);
-        android.graphics.drawable.GradientDrawable bg = Ui.round(s.surface, s.radius);
-        if (s.outlined) bg.setStroke(Ui.dp(c, 2.5f), s.ink);
-        f.setBackground(Ui.ripple(c, bg));
+        f.setBackground(Ui.ripple(c, cardLook(c, s)));
         int pad = s.outlined ? 0 : Ui.dp(c, 16);
         f.setPadding(pad, pad, pad, pad);
-        if (s.depth && !s.outlined) f.setElevation(Ui.dp(c, 3));
+        if (s.depth && !s.outlined && !"none".equals(s.bg)) f.setElevation(Ui.dp(c, 3));
         f.setClipToOutline(true);
         return f;
+    }
+
+    /** The card behind a tile: theme surface, glass, a solid colour or nothing, with opacity, border and gloss. */
+    private static android.graphics.drawable.Drawable cardLook(Context c, Style s) {
+        boolean none = "none".equals(s.bg);
+        int fill = "glass".equals(s.bg) ? (Ui.isLight(s.ink) ? 0x30FFFFFF : 0x40FFFFFF) : s.surface;
+        fill = Ui.alpha(fill, Math.round((fill >>> 24) * Math.max(0, Math.min(100, s.opacity)) / 100f));
+        android.graphics.drawable.GradientDrawable bg = Ui.round(none ? 0 : fill, s.radius);
+        if (s.outlined) bg.setStroke(Ui.dp(c, 2.5f), s.ink);
+        else if (s.border) bg.setStroke(Ui.dp(c, 1.5f), Ui.alpha(s.ink, 0x66));
+        else if ("glass".equals(s.bg)) bg.setStroke(Ui.dp(c, 1), 0x40FFFFFF);
+        android.graphics.drawable.Drawable look = bg;
+        if (s.gloss && !none) { // a soft light across the top half
+            android.graphics.drawable.GradientDrawable shine = new android.graphics.drawable.GradientDrawable(
+                    android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x55FFFFFF, 0x10FFFFFF, 0x00FFFFFF});
+            shine.setCornerRadius(s.radius);
+            look = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{bg, shine});
+        }
+        return look;
     }
 
     /** Outlined style: a header bar, a full-width rule, then the body. Returns the body container. */
@@ -346,7 +390,7 @@ final class Tiles {
     private static TextView text(Context c, Style s, float sp, boolean bold, int alpha) {
         TextView t = new TextView(c);
         t.setTextColor(Ui.alpha(s.ink, alpha));
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp * s.scale);
         t.setTypeface(Typeface.create(s.face, bold ? Typeface.BOLD : Typeface.NORMAL));
         t.setIncludeFontPadding(false);
         t.setSingleLine(true);
@@ -356,6 +400,7 @@ final class Tiles {
 
     static View create(Context c, String spec, Host host, Style s) {
         spec = base(spec);
+        if (!spec.startsWith("widget:") && !spec.startsWith("app:")) s = s.with(c, host.tileStyle(spec));
         if (spec.startsWith("widget:")) {
             View w = host.widget(widgetId(spec));
             if (w != null) return w;
@@ -491,9 +536,8 @@ final class Tiles {
     private static void appList(Context c, FrameLayout f, String spec, Host host, Style s) {
         f.setTag("applist");
         f.setPadding(Ui.dp(c, 6), Ui.dp(c, 8), Ui.dp(c, 6), Ui.dp(c, 8));
-        android.graphics.drawable.GradientDrawable bg = Ui.round(s.surface, s.radius);
-        if (s.outlined) bg.setStroke(Ui.dp(c, 2.5f), s.ink);
-        f.setBackground(bg); // no ripple over the whole list
+        f.setBackground(cardLook(c, s)); // no ripple over the whole list
+        if ("none".equals(s.bg)) f.setElevation(0);
         String id = listId(spec);
         boolean picks = spec.startsWith("applist:pick"), fav = id.equals("fav");
         org.json.JSONObject cfg = host.listConfig(id);
@@ -705,7 +749,7 @@ final class Tiles {
         t.setFormat12Hour(fmt);
         t.setFormat24Hour(fmt);
         t.setTextColor(Ui.alpha(s.ink, alpha));
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp * s.scale);
         t.setTypeface(Typeface.create(s.face, bold ? Typeface.BOLD : Typeface.NORMAL));
         t.setIncludeFontPadding(false);
     }

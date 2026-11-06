@@ -744,6 +744,7 @@ public class HomeActivity extends Activity implements NotifService.Listener {
     }
 
     private final Tiles.Host tileHost = new Tiles.Host() {
+        @Override public org.json.JSONObject tileStyle(String key) { return tileStyles().optJSONObject(key); }
         @Override public View appIcon(Entry e) {
             if (style == null) return null;
             AppCell c = cellFor(e, gridLabels(), style.ink, fitIcon(gridIconPx(), availableWidth() / Math.max(1, prefs.columns())));
@@ -986,6 +987,114 @@ public class HomeActivity extends Activity implements NotifService.Listener {
         }
         root.addView(resizeBar, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP | Gravity.START));
+    }
+
+    // ---- per-tile style (like Widget Studio's style editor) ----
+
+    private org.json.JSONObject tileStyles() {
+        try { return new org.json.JSONObject(prefs.str("tilestyles", "{}")); } catch (Exception e) { return new org.json.JSONObject(); }
+    }
+
+    private void saveTileStyle(String key, org.json.JSONObject o) {
+        org.json.JSONObject all = tileStyles();
+        try { if (o == null || o.length() == 0) all.remove(key); else all.put(key, o); } catch (Exception ignored) { }
+        prefs.set("tilestyles", all.toString());
+        afterEdit(true);
+    }
+
+    private void tileStyleSheet(String key, String title) {
+        org.json.JSONObject cur = tileStyles().optJSONObject(key);
+        final org.json.JSONObject o = cur != null ? cur : new org.json.JSONObject();
+        java.util.function.BiConsumer<String, Object> put = (k, v) -> {
+            try { o.put(k, v); } catch (Exception ignored) { }
+            saveTileStyle(key, o);
+        };
+        Sheet s = editSheet("Style · " + title);
+        s.view(chipsView("Card", new String[]{"Theme", "Glass", "Solid", "None"}, new String[]{"theme", "glass", "solid", "none"},
+                o.optString("bg", "theme"), v -> put.accept("bg", v)));
+        s.view(swatchView("Card colour", new int[]{0, 0xFFFFFFFF, 0xFFF2F2F7, 0xFFD1D5DB, 0xFF8E8E93, 0xFF2C2C2E, 0xFF000000,
+                        0xFF1E3A5F, 0xFF1F4D3A, 0xFF5B2333, 0xFFFFE8CC, 0xFFFFD6E0, 0xFFDCEBFF, prefs.accent()},
+                o.optInt("bgc", 0), v -> put.accept("bgc", v)));
+        s.view(sliderView("Card opacity", 0, 100, o.optInt("opacity", 100), "%", null, v -> put.accept("opacity", v)));
+        s.view(sliderView("Corner radius", 0, 48, o.has("radius") ? o.optInt("radius") : prefs.i(Prefs.WIDGET_RADIUS), " dp", null,
+                v -> put.accept("radius", v)));
+        s.view(chipsView("Finish", new String[]{"Matte", "Gloss"}, new String[]{"matte", "gloss"},
+                o.optBoolean("gloss", false) ? "gloss" : "matte", v -> put.accept("gloss", "gloss".equals(v))));
+        s.view(chipsView("Depth shadow", new String[]{"Theme", "On", "Off"}, new String[]{"theme", "on", "off"},
+                o.optString("depth", "theme"), v -> put.accept("depth", v)));
+        s.view(chipsView("Border", new String[]{"Off", "On"}, new String[]{"off", "on"},
+                o.optBoolean("border", false) ? "on" : "off", v -> put.accept("border", "on".equals(v))));
+        s.view(swatchView("Text colour", new int[]{0, 0xFFFFFFFF, 0xFF111111, 0xFF8E8E93, prefs.accent(), 0xFFFF453A, 0xFFFF9F0A,
+                        0xFFFFD60A, 0xFF30D158, 0xFF64D2FF, 0xFF0A84FF, 0xFFBF5AF2, 0xFFFF375F},
+                o.optInt("ink", 0), v -> put.accept("ink", v)));
+        String font = o.optString("font", "");
+        String fontName = "Theme font";
+        for (String[] ft : FontList.ALL) if (ft[0].equals(font)) fontName = ft[1];
+        s.item("Font: " + fontName + "…", () -> {
+            Sheet f = editSheet("Font");
+            f.option("Theme font", null, font.isEmpty(), () -> { o.remove("font"); saveTileStyle(key, o); });
+            for (String[] ft : FontList.ALL)
+                f.option(ft[1], Ui.typeface(this, ft[0], Typeface.NORMAL), ft[0].equals(font), () -> put.accept("font", ft[0]));
+            f.show();
+        });
+        s.view(sliderView("Text size", 70, 160, o.optInt("scale", 100), "%", null, v -> put.accept("scale", v)));
+        s.item("Use this style on every tile", () -> {
+            org.json.JSONObject all = tileStyles();
+            for (List<String> l : Tiles.load(prefs))
+                for (String sp : l) {
+                    String b = Tiles.base(sp);
+                    if (Tiles.isWidget(sp) || b.startsWith("app:")) continue;
+                    try { all.put(b, new org.json.JSONObject(o.toString())); } catch (Exception ignored) { }
+                }
+            prefs.set("tilestyles", all.toString());
+            afterEdit(true);
+            Ui.toast(this, "Style copied to all tiles");
+        });
+        s.item("Reset to the theme's style", () -> saveTileStyle(key, null));
+        s.show();
+    }
+
+    /** A titled row of colour dots; 0 = "Auto" (follow the theme). */
+    private View swatchView(String title, int[] colors, int cur, java.util.function.IntConsumer pick) {
+        Ios ios = Ios.of(this);
+        LinearLayout block = new LinearLayout(this);
+        block.setOrientation(LinearLayout.VERTICAL);
+        block.setPadding(dp(16), dp(12), dp(16), dp(12));
+        TextView t = new TextView(this);
+        t.setText(title);
+        t.setTextColor(ios.text);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        block.addView(t);
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        LinearLayout row = new LinearLayout(this);
+        row.setPadding(0, dp(10), 0, dp(2));
+        List<View> dots = new ArrayList<>();
+        for (int col : colors) {
+            TextView d = new TextView(this);
+            d.setGravity(Gravity.CENTER);
+            d.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+            g.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            if (col == 0) { g.setColor(ios.segBg); d.setText("Auto"); d.setTextColor(ios.text); }
+            else g.setColor(col);
+            boolean sel = col == cur;
+            g.setStroke(dp(sel ? 3 : 1), sel ? ios.tint : 0x33808080);
+            d.setBackground(g);
+            d.setOnClickListener(v -> {
+                for (int k = 0; k < dots.size(); k++)
+                    ((android.graphics.drawable.GradientDrawable) dots.get(k).getBackground()).setStroke(dp(colors[k] == col ? 3 : 1),
+                            colors[k] == col ? ios.tint : 0x33808080);
+                pick.accept(col);
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(38), dp(38));
+            lp.setMarginEnd(dp(10));
+            row.addView(d, lp);
+            dots.add(d);
+        }
+        hs.addView(row);
+        block.addView(hs);
+        return block;
     }
 
     private void confirmRemoveWidget(int slot) {
@@ -2753,6 +2862,8 @@ public class HomeActivity extends Activity implements NotifService.Listener {
             s.view(chipsView("Card behind widgets", new String[]{"None", "Glass", "Dark", "Surface"},
                     new String[]{"none", "glass", "dark", "surface"}, prefs.s(Prefs.WIDGET_BG), v -> setS(Prefs.WIDGET_BG, v, true)));
         }
+        if (!Tiles.isWidget(spec) && !Tiles.base(spec).startsWith("app:"))
+            s.item("Style: card, colours, font, size…", () -> tileStyleSheet(Tiles.base(spec), Tiles.label(spec, null)));
         if (Tiles.base(spec).startsWith("app:")) s.item("Change app…", () -> pickApp("Choose an app",
                 key -> { l.set(idx, "app:" + key + "|" + Tiles.w(spec) + "|" + Tiles.h(spec)); save.run(); }));
         s.view(chipsView("Tile corners (all tiles & widgets)", new String[]{"Square", "Soft", "Round", "Extra round"},
