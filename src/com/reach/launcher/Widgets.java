@@ -105,13 +105,28 @@ final class Widgets {
         private final LinearLayout dots;
         private final int slop;
         private float downX, downY;
-        private boolean dragging;
+        private boolean dragging, decided;
+        private Prefs prefs;
+        private String key;
 
         Stack(Context c) {
             super(c);
             slop = ViewConfiguration.get(c).getScaledTouchSlop();
             dots = new LinearLayout(c);
             dots.setOrientation(LinearLayout.VERTICAL);
+            setClipChildren(true);
+        }
+
+        /** Remembers which card is showing across home-screen rebuilds. */
+        void remember(Prefs p, int firstId) {
+            prefs = p;
+            key = "wsi:" + firstId;
+            int saved = p.integer(key, 0);
+            if (saved > 0 && saved < items.size()) {
+                items.get(index).setVisibility(GONE);
+                index = saved;
+                items.get(index).setVisibility(VISIBLE);
+            }
         }
 
         void add(View v) {
@@ -154,24 +169,46 @@ final class Widgets {
                     .withEndAction(() -> { out.setVisibility(GONE); out.setTranslationY(0); out.setAlpha(1f); }).start();
             index = i;
             updateDots();
+            if (prefs != null) prefs.setQuietInt(key, index);
+            performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);
+        }
+
+        /** True when a touch at this screen point is on a stack that can flip. */
+        boolean flippableAt(float rawX, float rawY) {
+            if (items.size() < 2 || !isShown()) return false;
+            int[] p = new int[2];
+            getLocationOnScreen(p);
+            return rawX >= p[0] && rawX < p[0] + getWidth() && rawY >= p[1] && rawY < p[1] + getHeight();
         }
 
         View current() { return items.isEmpty() ? null : items.get(index); }
 
         @Override
         public boolean onInterceptTouchEvent(MotionEvent e) {
+            if (items.size() < 2) return false;
             switch (e.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     downX = e.getX();
                     downY = e.getY();
                     dragging = false;
+                    decided = false;
+                    // claim the gesture now, before the scrolling page or the pager take it
+                    getParent().requestDisallowInterceptTouchEvent(true);
                     break;
                 case MotionEvent.ACTION_MOVE:
+                    if (decided) break;
                     float dy = e.getY() - downY, dx = e.getX() - downX;
-                    if (items.size() > 1 && Math.abs(dy) > slop * 2 && Math.abs(dy) > Math.abs(dx) * 1.5f) {
+                    if (Math.abs(dx) > slop && Math.abs(dx) > Math.abs(dy)) { // sideways: hand it to the pager
+                        decided = true;
+                        getParent().requestDisallowInterceptTouchEvent(false);
+                    } else if (Math.abs(dy) > slop) {
+                        decided = true;
                         dragging = true;
-                        getParent().requestDisallowInterceptTouchEvent(true);
                     }
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    getParent().requestDisallowInterceptTouchEvent(false);
                     break;
             }
             return dragging;
@@ -179,10 +216,34 @@ final class Widgets {
 
         @Override
         public boolean onTouchEvent(MotionEvent e) {
-            if (e.getActionMasked() == MotionEvent.ACTION_UP && dragging) {
-                float dy = e.getY() - downY;
-                if (Math.abs(dy) > getHeight() * 0.12f) show(index + (dy < 0 ? 1 : -1), dy < 0 ? 1 : -1);
-                dragging = false;
+            View cur = current();
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    downX = e.getX();
+                    downY = e.getY();
+                    if (items.size() > 1) getParent().requestDisallowInterceptTouchEvent(true);
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    if (!dragging && items.size() > 1 && Math.abs(e.getY() - downY) > slop) dragging = true;
+                    if (dragging && cur != null) { // the card follows the finger
+                        float dy = e.getY() - downY;
+                        cur.setTranslationY(dy * 0.6f);
+                        cur.setAlpha(1f - Math.min(.6f, Math.abs(dy) / Math.max(1, getHeight())));
+                    }
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    getParent().requestDisallowInterceptTouchEvent(false);
+                    if (dragging) {
+                        float dy = e.getY() - downY;
+                        if (e.getActionMasked() == MotionEvent.ACTION_UP && Math.abs(dy) > Math.min(getHeight() * 0.12f, slop * 4)) {
+                            show(index + (dy < 0 ? 1 : -1), dy < 0 ? 1 : -1);
+                        } else if (cur != null) {
+                            cur.animate().translationY(0).alpha(1f).setDuration(160).start();
+                        }
+                    }
+                    dragging = false;
+                    return true;
             }
             return true;
         }
@@ -279,6 +340,7 @@ final class Widgets {
                 st.add(hv);
             }
             st.finish();
+            st.remember(prefs, first);
             v = st;
         }
         v.setTag(Prefs.slotOf(ids));
@@ -323,10 +385,12 @@ final class Widgets {
     void layoutRows() {
         for (View v : slotViews) detach(v);
         column.removeAllViews();
+        java.util.Set<Integer> parked = Layouts.parked(prefs); // used by another theme's layout, not this one
         int gap = Ui.dp(a, 12);
         LinearLayout row = null;
         int used = 0;
         for (View v : slotViews) {
+            if (parked.contains(Prefs.idsOf((String) v.getTag()).get(0))) continue;
             int span = Math.max(1, Math.min(COLS, Math.round(((LinearLayout.LayoutParams) v.getLayoutParams()).weight)));
             int first = Prefs.idsOf((String) v.getTag()).get(0);
             int gapAbove = prefs.integer("wg:" + first, 0);
@@ -398,6 +462,12 @@ final class Widgets {
     }
 
     /** The slot's view, detached so the grid can place it. */
+    /** True when a touch at this screen point lands on a stack of two or more widgets. */
+    boolean stackAt(float rawX, float rawY) {
+        for (View v : slotViews) if (v instanceof Stack && ((Stack) v).flippableAt(rawX, rawY)) return true;
+        return false;
+    }
+
     View viewForId(int firstId) {
         int s = slotOfId(firstId);
         if (s < 0) return null;
@@ -692,6 +762,7 @@ final class Widgets {
         pendingId = -1;
         AppWidgetProviderInfo info = awm.getAppWidgetInfo(id);
         if (info == null) { host.deleteAppWidgetId(id); return; }
+        Layouts.unpark(prefs, id);
         if (pendingSlot >= 0) prefs.stackWidget(pendingSlot, id); else prefs.addWidget(id);
         pendingSlot = -1;
         a.markSynced();

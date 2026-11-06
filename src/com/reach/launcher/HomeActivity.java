@@ -121,7 +121,7 @@ public class HomeActivity extends Activity implements NotifService.Listener {
     private EditText search;
     private DrawerAdapter adapter;
     private AlphabetBar bar;
-    private boolean drawerOpen, downOnBar, downOnInteractive;
+    private boolean drawerOpen, downOnBar, downOnInteractive, downOnStack;
     private float downRawY;
     private GestureDetector gestures;
 
@@ -465,6 +465,7 @@ public class HomeActivity extends Activity implements NotifService.Listener {
                 if (e1 == null) return false;
                 float dy = e2.getRawY() - e1.getRawY(), dx = e2.getRawX() - e1.getRawX();
                 if (Math.abs(dy) < dp(56) || Math.abs(dy) < Math.abs(dx) * 1.5f || Math.abs(vy) < 500) return false;
+                if (!drawerOpen && downOnStack && !editMode) return false; // the swipe flips the widget stack
                 if (!drawerOpen) {
                     // let a scrollable widget column scroll instead
                     if (hit(widgetScroll, downRawX(e1), downRawY) && widgetScroll.canScrollVertically(dy < 0 ? 1 : -1)) return false;
@@ -1143,9 +1144,10 @@ public class HomeActivity extends Activity implements NotifService.Listener {
             }
         }
         int unit = Tiles.unit(this, availableWidth());
+        java.util.Set<Integer> parked = Layouts.parked(prefs);
         for (int i = 0; i < widgets.slotCount(); i++) {
             int id = widgets.firstIdOf(i);
-            if (referenced.contains(id)) continue;
+            if (referenced.contains(id) || parked.contains(id)) continue;
             int hPx = widgets.heightOf(i);
             int h = Math.max(1, Math.min(Tiles.MAX_H, Math.round(hPx / (float) Math.max(1, Tiles.pitch(this, availableWidth())))));
             int w = Math.max(1, Math.min(Tiles.G, widgets.spanOfSlot(i)));
@@ -3398,6 +3400,7 @@ public class HomeActivity extends Activity implements NotifService.Listener {
                 }
             }
             downOnInteractive = overInteractive(ev.getRawX(), ev.getRawY());
+            downOnStack = widgets != null && widgets.stackAt(ev.getRawX(), ev.getRawY());
         }
         if (!downOnBar) gestures.onTouchEvent(ev);
         return super.dispatchTouchEvent(ev);
@@ -3405,6 +3408,9 @@ public class HomeActivity extends Activity implements NotifService.Listener {
 
     /** Pushes preferences into the views. */
     void applyStyle() {
+        if (previewThemes == null && Layouts.sync(prefs)) { // theme changed: bring in its own home layout
+            if (widgets != null) main.post(() -> { widgets.restore(); rebuildFavorites(); });
+        }
         arrangeHome();
         boolean left = prefs.leftHanded();
         int side = dp(20), barSide = dp(44);

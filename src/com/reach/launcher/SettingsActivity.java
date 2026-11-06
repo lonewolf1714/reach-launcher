@@ -577,6 +577,7 @@ public class SettingsActivity extends Activity {
         s.item("Preview full screen", () -> fullPreview(t.optString("id")));
         s.item("Details", () -> go(() -> previewPage(t.optString("id"))));
         s.item("Edit", () -> { p.applyLook(t, this); go(() -> editorPage(t.optString("id"))); });
+        s.item("Home layout…", () -> layoutMenu(t));
         s.item("Duplicate", () -> {
             themes.add(Themes.copy(t, t.optString("name") + " copy"));
             Themes.save(p, themes);
@@ -591,6 +592,25 @@ public class SettingsActivity extends Activity {
             themes.remove(t);
             Themes.save(p, themes);
             render();
+        });
+        s.show();
+    }
+
+    /** Each theme has its own home layout; this sheet resets, copies or edits it. */
+    private void layoutMenu(JSONObject t) {
+        String id = t.optString("id"), name = t.optString("name");
+        boolean active = id.equals(p.activeTheme());
+        Sheet s = new Sheet(this, name + " · home layout", null);
+        s.note("Every theme keeps its own home layout: tiles, widgets and where they sit. Switch theme and its layout comes back.");
+        if (active) s.item("Edit this layout on the home screen", () ->
+                startActivity(new Intent(this, HomeActivity.class).putExtra("editHome", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+        if (Layouts.designed(id) != null) s.item("Reset to " + name + "’s designed layout", () -> {
+            Layouts.reset(p, id);
+            Ui.toast(this, active ? "Layout reset" : "Reset: you’ll see it when you switch to " + name);
+        });
+        if (!active) s.item("Use my current home layout for " + name, () -> {
+            Layouts.copyCurrentTo(p, id);
+            Ui.toast(this, name + " will open with your current layout");
         });
         s.show();
     }

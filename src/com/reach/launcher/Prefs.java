@@ -99,6 +99,9 @@ final class Prefs {
     /** Write without bumping rev (bookkeeping the home screen doesn't need to redraw for). */
     void setQuiet(String k, String v) { sp.edit().putString(k, v).apply(); }
 
+    /** Saves without telling the home screen to rebuild (UI state such as which stack card is showing). */
+    void setQuietInt(String k, int v) { sp.edit().putInt(k, v).apply(); }
+
     /** Theme-able int with its default. */
     int i(String k) {
         Object d = DEF.get(k);
